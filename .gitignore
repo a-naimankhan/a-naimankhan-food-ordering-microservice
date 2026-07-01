@@ -1,0 +1,18 @@
+#Docker files
+docker-compose.yml
+
+#.env
+.env
+microservices_jira_roadmap.md
+
+## Logs
+logs
+*.log
+
+## Runtime data
+pids
+*.pid
+
+# IDE
+.vscode/
+.idea/
