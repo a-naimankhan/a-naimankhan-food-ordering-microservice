@@ -1,16 +1,17 @@
 package main
 
-import (
-	"fmt"
-	"net/http"
-)
+import "log"
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Hello world!"))
-	})
+	configs, err := configs.GetConfigs()
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	fmt.Println("Server ")
-	http.ListenAndServe(":8080", nil)
+	startServer(configs)
+
+}
+
+func startServer(configs *configs.Config) {
+	orderRepo ,
 }
