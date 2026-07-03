@@ -12,7 +12,7 @@ type orderRepo struct {
 	db *sqlx.DB
 }
 
-func NewOrderRepo(db *sqlx.DB) *orderRepo {
+func NewOrderRepo(db *sqlx.DB) domain.OrderRepository {
 	return &orderRepo{db}
 }
 
@@ -33,7 +33,7 @@ func (o *orderRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Order, e
 }
 
 func (o *orderRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
-	query := "UPDATE ORDERS WHERE id = $1 AND status = $2"
+	query := "UPDATE ORDERS SET status = $2 WHERE id = $1"
 	_, err := o.db.ExecContext(ctx, query, id, status)
 	return err
 }

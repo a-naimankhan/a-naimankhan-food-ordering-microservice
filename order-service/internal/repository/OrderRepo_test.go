@@ -158,7 +158,7 @@ func TestOrderRepo_UpdateStatus(t *testing.T) {
 		},
 		{
 			name: "DB Error",
-			id:   uuid.New(),
+			id:   orderID,
 			mockSetup: func() {
 				mock.ExpectExec("UPDATE ORDERS").
 					WithArgs(orderID, newStatus).
