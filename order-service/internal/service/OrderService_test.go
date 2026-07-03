@@ -83,7 +83,7 @@ func TestOrderService_GetOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := newOrderService(tt.repo)
+			svc := NewOrderService(tt.repo)
 			got, err := svc.GetOrder(ctx, id)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -235,8 +235,16 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := newOrderService(tt.repo)
-			order, err := svc.CreateOrder(ctx, tt.customerID, tt.amount, tt.status)
+			svc := NewOrderService(tt.repo)
+			// prepare domain.Order according to test case
+			var cid uuid.UUID
+			if parsed, perr := uuid.Parse(tt.customerID); perr == nil {
+				cid = parsed
+			} else {
+				cid = uuid.Nil
+			}
+			orderArg := &domain.Order{CustomerID: cid, Amount: tt.amount, Status: tt.status}
+			order, err := svc.CreateOrder(ctx, orderArg)
 			if tt.wantErr {
 				assert.Error(t, err)
 				if tt.errMsg != "" {
@@ -375,7 +383,7 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := newOrderService(tt.repo)
+			svc := NewOrderService(tt.repo)
 			err := svc.UpdateOrderStatus(ctx, tt.id, tt.status)
 			if tt.wantErr {
 				assert.Error(t, err)

@@ -2,76 +2,71 @@ package service
 
 import (
 	"context"
-	"errors"
 	"order-service/internal/domain"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-type OrderService struct {
+type orderService struct {
 	orderRepo domain.OrderRepository
 }
 
-func newOrderService(orderRepo domain.OrderRepository) *OrderService {
-	return &OrderService{orderRepo}
+func NewOrderService(orderRepo domain.OrderRepository) domain.OrderService {
+	return &orderService{orderRepo: orderRepo}
 }
 
-func (s *OrderService) GetOrder(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+func (s *orderService) GetOrder(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
 	order, err := s.orderRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 	if order == nil {
-		return nil, errors.New("order not found")
+		return nil, domain.ErrOrderNotFound
 	}
 	return order, nil
 }
 
-func (s *OrderService) CreateOrder(ctx context.Context, customerID string, amount float64, status string) (*domain.Order, error) {
-
-	cstmId, err := uuid.Parse(customerID)
-	if err != nil {
-		return nil, errors.New("invalid customer id")
+func (s *orderService) CreateOrder(ctx context.Context, order *domain.Order) (*domain.Order, error) {
+	if order == nil {
+		return nil, domain.ErrInvalidCustomerID
 	}
 
-	if amount <= 0 {
-		return nil, errors.New("amount must be greater than zero")
+	if order.Amount <= 0 {
+		return nil, domain.ErrInvalidAmount
 	}
 
-	if status == "" {
-		return nil, errors.New("status is empty")
+	if order.Status == "" {
+		return nil, domain.ErrStatusEmpty
 	}
 
-	order := &domain.Order{
-		ID:         uuid.New(),
-		CustomerID: cstmId,
-		Amount:     amount,
-		Status:     status,
-		CreatedAt:  time.Now(),
+	if !domain.IsValidStatus(order.Status) {
+		return nil, domain.ErrInvalidStatus
 	}
 
-	err = s.orderRepo.Create(ctx, order)
-	if err != nil {
+	if order.CustomerID == uuid.Nil {
+		return nil, domain.ErrInvalidCustomerID
+	}
+
+	if order.ID == uuid.Nil {
+		order.ID = uuid.New()
+	}
+	if order.CreatedAt.IsZero() {
+		order.CreatedAt = time.Now()
+	}
+
+	if err := s.orderRepo.Create(ctx, order); err != nil {
 		return nil, err
 	}
-
 	return order, nil
 }
 
-func (s *OrderService) UpdateOrderStatus(ctx context.Context, id uuid.UUID, status string) error {
+func (s *orderService) UpdateOrderStatus(ctx context.Context, id uuid.UUID, status string) error {
 	if status == "" {
-		return errors.New("status is empty")
+		return domain.ErrStatusEmpty
 	}
-
-	statuses := []string{"pending", "shipped", "delivered", "cancelled"}
-
-	for _, st := range statuses {
-		if status == st {
-			return s.orderRepo.UpdateStatus(ctx, id, status)
-		}
+	if !domain.IsValidStatus(status) {
+		return domain.ErrInvalidStatus
 	}
-
-	return errors.New("status is invalid")
-
+	return s.orderRepo.UpdateStatus(ctx, id, status)
 }
