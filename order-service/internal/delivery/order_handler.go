@@ -1,11 +1,13 @@
 package delivery
 
 import (
+	"errors"
 	"net/http"
 	"order-service/internal/domain"
 
 	"github.com/gin-gonic/gin"
 	"github.com/go-playground/validator/v10"
+	"github.com/google/uuid"
 )
 
 type OrderHandler struct {
@@ -26,20 +28,40 @@ type OrderRequest struct {
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	var req OrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		ErrorResponce(c, http.StatusBadRequest, err.Error())
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	if err := h.validate.Struct(req); err != nil {
-		ErrorResponce(c, http.StatusBadRequest, err.Error())
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	order, err := h.service.CreateOrder(c.Request.Context(), req.CustomerID, req.Amount, req.Status)
+	cid, err := uuid.Parse(req.CustomerID)
 	if err != nil {
-		ErrorResponce(c, http.StatusInternalServerError, err.Error())
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	SuccessResponce(c, http.StatusCreated, order)
+	orderModel := &domain.Order{
+		CustomerID: cid,
+		Amount:     req.Amount,
+		Status:     req.Status,
+	}
+
+	created, err := h.service.CreateOrder(c.Request.Context(), orderModel)
+	if err != nil {
+		if errors.Is(err, domain.ErrInvalidCustomerID) || errors.Is(err, domain.ErrInvalidAmount) || errors.Is(err, domain.ErrInvalidStatus) {
+			ErrorResponse(c, http.StatusBadRequest, err.Error())
+			return
+		}
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	SuccessResponse(c, http.StatusCreated, created)
+}
+
+func (h *OrderHandler) Ping(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"message": "pong"})
 }

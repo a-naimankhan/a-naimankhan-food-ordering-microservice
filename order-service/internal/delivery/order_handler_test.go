@@ -18,16 +18,16 @@ import (
 
 // fakeService implements domain.OrderService for handler tests.
 type fakeService struct {
-    CreateOrderFn       func(ctx context.Context, customerID string, amount float64, status string) (*domain.Order, error)
+    CreateOrderFn       func(ctx context.Context, order *domain.Order) (*domain.Order, error)
     GetOrderFn          func(ctx context.Context, id uuid.UUID) (*domain.Order, error)
     UpdateOrderStatusFn func(ctx context.Context, id uuid.UUID, status string) error
 }
 
-func (f *fakeService) CreateOrder(ctx context.Context, customerID string, amount float64, status string) (*domain.Order, error) {
+func (f *fakeService) CreateOrder(ctx context.Context, order *domain.Order) (*domain.Order, error) {
     if f.CreateOrderFn == nil {
         return nil, nil
     }
-    return f.CreateOrderFn(ctx, customerID, amount, status)
+    return f.CreateOrderFn(ctx, order)
 }
 
 func (f *fakeService) GetOrder(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
@@ -55,8 +55,8 @@ func setupRouter(svc domain.OrderService) *gin.Engine {
 func TestOrderHandler_CreateOrder_Success(t *testing.T) {
     id := uuid.New()
     svc := &fakeService{
-        CreateOrderFn: func(ctx context.Context, customerID string, amount float64, status string) (*domain.Order, error) {
-            return &domain.Order{ID: id, CustomerID: uuid.MustParse(customerID), Amount: amount, Status: status}, nil
+        CreateOrderFn: func(ctx context.Context, order *domain.Order) (*domain.Order, error) {
+            return &domain.Order{ID: id, CustomerID: order.CustomerID, Amount: order.Amount, Status: order.Status}, nil
         },
     }
 
@@ -102,7 +102,7 @@ func TestOrderHandler_CreateOrder_BadRequest(t *testing.T) {
 
 func TestOrderHandler_CreateOrder_ServiceError(t *testing.T) {
     svc := &fakeService{
-        CreateOrderFn: func(ctx context.Context, customerID string, amount float64, status string) (*domain.Order, error) {
+        CreateOrderFn: func(ctx context.Context, order *domain.Order) (*domain.Order, error) {
             return nil, errors.New("service failure")
         },
     }
