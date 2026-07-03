@@ -22,6 +22,7 @@ type OrderRepository interface {
 }
 
 type OrderService interface {
-	PlaceOrder(ctx context.Context, order *Order) error
+	CreateOrder(ctx context.Context, order *Order) (*Order, error)
 	GetOrder(ctx context.Context, id uuid.UUID) (*Order, error)
+	UpdateOrderStatus(ctx context.Context, id uuid.UUID, status string) error
 }
