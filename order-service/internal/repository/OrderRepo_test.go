@@ -16,8 +16,8 @@ import (
 func TestOrderRepo_Create(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	assert.NoError(t, err)
-	defer db.Close()
 
+	defer db.Close()
 	sqlxDB := sqlx.NewDb(db, "sqlmock")
 	var repo domain.OrderRepository = NewOrderRepo(sqlxDB)
 
@@ -136,6 +136,7 @@ func TestOrderRepo_UpdateStatus(t *testing.T) {
 	var repo domain.OrderRepository = NewOrderRepo(sqlxDB)
 
 	orderID := uuid.New()
+	notFoundID := uuid.New()
 	newStatus := "paid"
 
 	tests := []struct {
@@ -167,6 +168,17 @@ func TestOrderRepo_UpdateStatus(t *testing.T) {
 			wantErr:       true,
 			expectedOrder: nil,
 		},
+		{
+			name: "Not Found",
+			id:   notFoundID,
+			mockSetup: func() {
+				mock.ExpectExec("UPDATE ORDERS").
+					WithArgs(notFoundID, newStatus).
+					WillReturnResult(sqlmock.NewResult(0, 0))
+			},
+			wantErr:       true,
+			expectedOrder: nil,
+		},
 	}
 
 	for _, tt := range tests {
@@ -179,7 +191,10 @@ func TestOrderRepo_UpdateStatus(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			assert.NoError(t, mock.ExpectationsWereMet())
+			// Verify all mock expectations were met after each test
+			if err := mock.ExpectationsWereMet(); err != nil {
+				t.Errorf("there were unfulfilled expectations: %s", err)
+			}
 		})
 	}
 }
