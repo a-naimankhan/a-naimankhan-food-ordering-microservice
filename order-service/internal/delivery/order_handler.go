@@ -62,6 +62,27 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	SuccessResponse(c, http.StatusCreated, created)
 }
 
+func (h *OrderHandler) GetOrder(c *gin.Context) {
+	id := c.Param("id")
+
+	if id == "" {
+		ErrorResponse(c, http.StatusNotFound, "id is required")
+		return
+	}
+
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		ErrorResponse(c, http.StatusBadRequest, "not valid format id")
+		return
+	}
+	order, err := h.service.GetOrder(c.Request.Context(), parsedID)
+	if err != nil {
+		ErrorResponse(c, http.StatusNotFound, "order not found")
+		return
+	}
+	SuccessResponse(c, http.StatusOK, order)
+}
+
 func (h *OrderHandler) Ping(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "pong"})
 }

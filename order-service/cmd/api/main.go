@@ -40,6 +40,7 @@ func startServer(handler *delivery.OrderHandler) {
 	{
 		api.GET("/ping", handler.Ping)
 		api.POST("/orders", handler.CreateOrder)
+		api.GET("/orders/:id", handler.GetOrder)
 	}
 
 	if err := r.Run(":8080"); err != nil {
