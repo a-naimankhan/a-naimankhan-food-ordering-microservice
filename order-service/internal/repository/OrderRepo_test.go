@@ -191,7 +191,6 @@ func TestOrderRepo_UpdateStatus(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
-			// Verify all mock expectations were met after each test
 			if err := mock.ExpectationsWereMet(); err != nil {
 				t.Errorf("there were unfulfilled expectations: %s", err)
 			}

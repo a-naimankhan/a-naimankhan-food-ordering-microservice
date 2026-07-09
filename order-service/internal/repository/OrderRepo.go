@@ -34,6 +34,16 @@ func (o *orderRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Order, e
 
 func (o *orderRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string) error {
 	query := "UPDATE ORDERS SET status = $2 WHERE id = $1"
-	_, err := o.db.ExecContext(ctx, query, id, status)
-	return err
+	result, err := o.db.ExecContext(ctx, query, id, status)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rowsAffected == 0 {
+		return domain.ErrOrderNotFound
+	}
+	return nil
 }
