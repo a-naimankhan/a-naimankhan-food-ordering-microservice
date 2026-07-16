@@ -40,6 +40,25 @@ func (f *fakeRepo) UpdateStatus(ctx context.Context, id uuid.UUID, status string
 	return f.UpdateStatusFn(ctx, id, status)
 }
 
+// fakePublisher implements domain.EventPublisher for testing
+type fakePublisher struct {
+	PublishFn func(ctx context.Context, topic string, payload interface{}) error
+	calls     []publishCall
+}
+
+type publishCall struct {
+	topic   string
+	payload interface{}
+}
+
+func (f *fakePublisher) Publish(ctx context.Context, topic string, payload interface{}) error {
+	f.calls = append(f.calls, publishCall{topic: topic, payload: payload})
+	if f.PublishFn != nil {
+		return f.PublishFn(ctx, topic, payload)
+	}
+	return nil
+}
+
 // TestOrderService_GetOrder tests the GetOrder method with various scenarios
 func TestOrderService_GetOrder(t *testing.T) {
 	ctx := context.Background()
@@ -83,7 +102,7 @@ func TestOrderService_GetOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := NewOrderService(tt.repo)
+			svc := NewOrderService(tt.repo, nil)
 			got, err := svc.GetOrder(ctx, id)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -235,7 +254,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := NewOrderService(tt.repo)
+			svc := NewOrderService(tt.repo, &fakePublisher{})
 			// prepare domain.Order according to test case
 			var cid uuid.UUID
 			if parsed, perr := uuid.Parse(tt.customerID); perr == nil {
@@ -383,7 +402,7 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := NewOrderService(tt.repo)
+			svc := NewOrderService(tt.repo, nil)
 			err := svc.UpdateOrderStatus(ctx, tt.id, tt.status)
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -397,3 +416,152 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 	}
 }
 
+// TestOrderService_CreateOrder_PublishesEvent verifies event publishing on order creation
+func TestOrderService_CreateOrder_PublishesEvent(t *testing.T) {
+	ctx := context.Background()
+	validCustomerID := uuid.New()
+
+	repo := &fakeRepo{
+		CreateFn: func(ctx context.Context, order *domain.Order) error {
+			return nil
+		},
+	}
+
+	tests := []struct {
+		name             string
+		publisher        domain.EventPublisher
+		expectedTopic    string
+		wantPublished    bool
+		wantErr          bool
+	}{
+		{
+			name:          "publishes order.created event on success",
+			publisher:     &fakePublisher{},
+			expectedTopic: "order.created",
+			wantPublished: true,
+			wantErr:       false,
+		},
+		{
+			name: "handles publisher error gracefully",
+			publisher: &fakePublisher{
+				PublishFn: func(ctx context.Context, topic string, payload interface{}) error {
+					return errors.New("rabbitmq connection failed")
+				},
+			},
+			expectedTopic: "order.created",
+			wantPublished: true,
+			wantErr:       false, // Publisher error should not fail the request
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := NewOrderService(repo, tt.publisher)
+
+			order := &domain.Order{
+				CustomerID: validCustomerID,
+				Amount:     50.0,
+				Status:     "pending",
+			}
+
+			result, err := svc.CreateOrder(ctx, order)
+
+			if tt.wantErr {
+				assert.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, result)
+				assert.NotEqual(t, uuid.Nil, result.ID)
+
+				// Verify event publishing
+				if tt.wantPublished {
+					fakeP := tt.publisher.(*fakePublisher)
+					assert.Len(t, fakeP.calls, 1, "should publish exactly one event")
+					assert.Equal(t, tt.expectedTopic, fakeP.calls[0].topic)
+
+					// Verify payload is the created order
+					publishedOrder, ok := fakeP.calls[0].payload.(*domain.Order)
+					assert.True(t, ok, "payload should be *domain.Order")
+					assert.Equal(t, result.ID, publishedOrder.ID)
+					assert.Equal(t, result.CustomerID, publishedOrder.CustomerID)
+					assert.Equal(t, result.Amount, publishedOrder.Amount)
+				}
+			}
+		})
+	}
+}
+
+// TestOrderService_CreateOrder_PublisherNotCalledOnValidationError verifies publisher is not called on validation errors
+func TestOrderService_CreateOrder_PublisherNotCalledOnValidationError(t *testing.T) {
+	ctx := context.Background()
+
+	tests := []struct {
+		name       string
+		order      *domain.Order
+		errMsg     string
+	}{
+		{
+			name:   "invalid customer id",
+			order:  &domain.Order{CustomerID: uuid.Nil, Amount: 50.0, Status: "pending"},
+			errMsg: "invalid customer id",
+		},
+		{
+			name:   "negative amount",
+			order:  &domain.Order{CustomerID: uuid.New(), Amount: -10.0, Status: "pending"},
+			errMsg: "amount must be greater than zero",
+		},
+		{
+			name:   "empty status",
+			order:  &domain.Order{CustomerID: uuid.New(), Amount: 50.0, Status: ""},
+			errMsg: "status is empty",
+		},
+		{
+			name:   "invalid status",
+			order:  &domain.Order{CustomerID: uuid.New(), Amount: 50.0, Status: "unknown"},
+			errMsg: "status is invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			publisher := &fakePublisher{}
+			repo := &fakeRepo{}
+
+			svc := NewOrderService(repo, publisher)
+			_, err := svc.CreateOrder(ctx, tt.order)
+
+			assert.Error(t, err)
+			assert.Equal(t, tt.errMsg, err.Error())
+			assert.Len(t, publisher.calls, 0, "publisher should not be called on validation error")
+		})
+	}
+}
+
+// TestOrderService_CreateOrder_WithNilPublisher verifies service works with nil publisher
+func TestOrderService_CreateOrder_WithNilPublisher(t *testing.T) {
+	ctx := context.Background()
+	validCustomerID := uuid.New()
+
+	repo := &fakeRepo{
+		CreateFn: func(ctx context.Context, order *domain.Order) error {
+			return nil
+		},
+	}
+
+	// Explicitly pass nil as publisher - this should be safe and not panic
+	svc := NewOrderService(repo, nil)
+
+	order := &domain.Order{
+		CustomerID: validCustomerID,
+		Amount:     50.0,
+		Status:     "pending",
+	}
+
+	result, err := svc.CreateOrder(ctx, order)
+
+	assert.NoError(t, err)
+	assert.NotNil(t, result)
+	assert.NotEqual(t, uuid.Nil, result.ID)
+	assert.NotZero(t, result.CreatedAt)
+}

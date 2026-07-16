@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"order-service/internal/delivery"
+	"order-service/internal/infrastructure/rabbitmq"
 	"order-service/internal/repository"
 	"order-service/internal/service"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
@@ -21,8 +23,14 @@ func main() {
 		log.Fatalf("could not connect to postgres: %v", err)
 	}
 
+	conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	ch, _ := conn.Channel()
+
+	publisher := rabbitmq.NewRabbitPublisher(*ch, "orders_events")
 	repo := repository.NewOrderRepo(db)
-	svc := service.NewOrderService(repo)
+
+	//paymentClient := domain.PaymentClient() // Initialize your payment client here
+	svc := service.NewOrderService(repo /*paymentClient*/, publisher)
 	handler := delivery.NewOrderHandler(svc)
 
 	startServer(handler)
