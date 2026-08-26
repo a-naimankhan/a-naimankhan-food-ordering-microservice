@@ -19,8 +19,11 @@ pids
 
 
 #Agents
-AGENTS.md
+order-service/AGENTS_MD/AGENTS.md
+order-service/AGENTS_MD
 
+#LOGS
+order-service/internal/logger/logs_test
 
 #
 .gitignore

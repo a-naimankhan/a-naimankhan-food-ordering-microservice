@@ -1,10 +1,9 @@
 package main
 
 import (
-	"fmt"
-	"log"
 	"order-service/internal/delivery"
 	"order-service/internal/infrastructure/rabbitmq"
+	"order-service/internal/logger"
 	"order-service/internal/repository"
 	"order-service/internal/service"
 	"os"
@@ -18,32 +17,54 @@ import (
 )
 
 func main() {
+	log := logger.Init(logger.DEBUG, "logs_test.md")
+	defer log.Close()
+
+	log.Info("🚀 Order Service starting...")
+	log.Debug("Connecting to PostgreSQL database")
+
 	db, err := sqlx.Open("postgres", "postgres://user:password123@localhost:5432/orders_db?sslmode=disable")
-	if err != nil {
-		log.Fatalf("could not connect to postgres: %v", err)
-	}
+	log.Must(err, "Failed to connect to PostgreSQL")
+	defer db.Close()
 
-	conn, _ := amqp.Dial("amqp://guest:guest@localhost:5672/")
-	ch, _ := conn.Channel()
+	log.Info("✅ PostgreSQL connected successfully")
+	log.Debug("Connecting to RabbitMQ broker")
 
-	publisher := rabbitmq.NewRabbitPublisher(*ch, "orders_events")
+	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
+	log.Must(err, "Failed to connect to RabbitMQ")
+	defer conn.Close()
+
+	ch, err := conn.Channel()
+	log.Must(err, "Failed to open RabbitMQ channel")
+	defer ch.Close()
+
+	log.Info("✅ RabbitMQ connected successfully")
+	log.Debug("Initializing repository, service, and handler")
+
+	publisher := rabbitmq.NewRabbitPublisher(ch, "orders_events")
 	repo := repository.NewOrderRepo(db)
-
-	//paymentClient := domain.PaymentClient() // Initialize your payment client here
-	svc := service.NewOrderService(repo /*paymentClient*/, publisher)
+	svc := service.NewOrderService(repo, publisher)
 	handler := delivery.NewOrderHandler(svc)
 
-	startServer(handler)
+	log.Info("✅ All components initialized successfully")
+	log.Info("🌐 Starting HTTP server on :8080")
+
+	go startServer(handler, log)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
-	fmt.Println("server is shutting down")
+
+	log.Info("📪 Shutdown signal received")
+	log.Info("🔒 Closing database connection")
+	log.Info("🔌 Closing RabbitMQ connection")
+	log.Info("✋ Server shutdown complete")
 }
 
-func startServer(handler *delivery.OrderHandler) {
+func startServer(handler *delivery.OrderHandler, log *logger.Logger) {
 	r := gin.Default()
 
+	log.Debug("Registering HTTP routes")
 	api := r.Group("/api/v1")
 	{
 		api.GET("/ping", handler.Ping)
@@ -51,7 +72,10 @@ func startServer(handler *delivery.OrderHandler) {
 		api.GET("/orders/:id", handler.GetOrder)
 	}
 
+	log.Info("✅ HTTP routes registered")
+	log.Info("🎧 Listening on :8080")
+
 	if err := r.Run(":8080"); err != nil {
-		log.Fatal(err)
+		log.Fatal("Failed to start HTTP server: %v", err)
 	}
 }
