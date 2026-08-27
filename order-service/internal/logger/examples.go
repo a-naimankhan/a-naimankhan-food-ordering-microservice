@@ -1,7 +1,5 @@
 package logger
 
-import "fmt"
-
 // Пример использования логгера
 
 /*
@@ -138,30 +136,30 @@ func disableDebugMode() {
 */
 
 // ExampleUsage демонстрирует основные операции логгера
-func ExampleUsage() {
-	log := Init(DEBUG, "example_logs.md")
-	defer log.Close()
-
-	fmt.Println("=== Logger Examples ===")
-
-	// 1. Различные уровни логирования
-	log.Info("Information message with param: %s", "value")
-	log.Debug("Debug message")
-	log.Warn("Warning message")
-	log.Error("Error message")
-
-	// 2. Функция Must для безопасной обработки ошибок
-	// Это не вызывает панику, так как err == nil
-	log.Must(nil, "No error occurred")
-
-	// 3. Проверка nil значений
-	value := "not nil"
-	log.MustNotNil(value, "Value check")
-
-	// 4. Изменение режима во время работы
-	log.SetMode(ERROR)
-	log.Info("This INFO won't be logged - we're in ERROR mode")
-	log.Error("But this ERROR will be logged")
-
-	fmt.Println("✓ Check example_logs.md to see the output")
-}
+//func ExampleUsage() {
+//	log := Init(DEBUG, "example_logs.md")
+//	defer log.Close()
+//
+//	fmt.Println("=== Logger Examples ===")
+//
+//	// 1. Различные уровни логирования
+//	log.Info("Information message with param: %s", "value")
+//	log.Debug("Debug message")
+//	log.Warn("Warning message")
+//	log.Error("Error message")
+//
+//	// 2. Функция Must для безопасной обработки ошибок
+//	// Это не вызывает панику, так как err == nil
+//	log.Must(nil, "No error occurred")
+//
+//	// 3. Проверка nil значений
+//	value := "not nil"
+//	log.MustNotNil(value, "Value check")
+//
+//	// 4. Изменение режима во время работы
+//	log.SetMode(ERROR)
+//	log.Info("This INFO won't be logged - we're in ERROR mode")
+//	log.Error("But this ERROR will be logged")
+//
+//	fmt.Println("✓ Check example_logs.md to see the output")
+//}

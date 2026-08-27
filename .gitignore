@@ -17,6 +17,9 @@ pids
 .vscode/
 .idea/
 
+#GOCACHE
+tmp
+order-service/tmp/.gocache
 
 #Agents
 order-service/AGENTS_MD/AGENTS.md

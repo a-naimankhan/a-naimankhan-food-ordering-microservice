@@ -17,18 +17,24 @@ import (
 )
 
 func main() {
-	log := logger.Init(logger.DEBUG, "logs_test.md")
+	////TODO init configs
+	//config, err := Must()
+	//if err != nil {
+	//	panic(err)
+	//}
+
+	log := logger.Init(logger.DEBUG)
 	defer log.Close()
 
-	log.Info("🚀 Order Service starting...")
-	log.Debug("Connecting to PostgreSQL database")
+	log.Info("Order Service starting")
 
+	log.Debug("Connecting to PostgreSQL database", "host", "localhost", "port", 5432)
 	db, err := sqlx.Open("postgres", "postgres://user:password123@localhost:5432/orders_db?sslmode=disable")
 	log.Must(err, "Failed to connect to PostgreSQL")
 	defer db.Close()
 
-	log.Info("✅ PostgreSQL connected successfully")
-	log.Debug("Connecting to RabbitMQ broker")
+	log.Info("PostgreSQL connected successfully")
+	log.Debug("Connecting to RabbitMQ broker", "host", "localhost", "port", 5672)
 
 	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
 	log.Must(err, "Failed to connect to RabbitMQ")
@@ -38,7 +44,7 @@ func main() {
 	log.Must(err, "Failed to open RabbitMQ channel")
 	defer ch.Close()
 
-	log.Info("✅ RabbitMQ connected successfully")
+	log.Info("RabbitMQ connected successfully")
 	log.Debug("Initializing repository, service, and handler")
 
 	publisher := rabbitmq.NewRabbitPublisher(ch, "orders_events")
@@ -46,8 +52,8 @@ func main() {
 	svc := service.NewOrderService(repo, publisher)
 	handler := delivery.NewOrderHandler(svc)
 
-	log.Info("✅ All components initialized successfully")
-	log.Info("🌐 Starting HTTP server on :8080")
+	log.Info("All components initialized successfully")
+	log.Info("Starting HTTP server on :8080")
 
 	go startServer(handler, log)
 
@@ -55,10 +61,8 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	log.Info("📪 Shutdown signal received")
-	log.Info("🔒 Closing database connection")
-	log.Info("🔌 Closing RabbitMQ connection")
-	log.Info("✋ Server shutdown complete")
+	log.Info("Shutdown signal received")
+	log.Info("Server shutdown complete")
 }
 
 func startServer(handler *delivery.OrderHandler, log *logger.Logger) {
@@ -72,10 +76,12 @@ func startServer(handler *delivery.OrderHandler, log *logger.Logger) {
 		api.GET("/orders/:id", handler.GetOrder)
 	}
 
-	log.Info("✅ HTTP routes registered")
-	log.Info("🎧 Listening on :8080")
+	log.Info("HTTP routes registered")
+	log.Info("Listening on :8080")
 
 	if err := r.Run(":8080"); err != nil {
-		log.Fatal("Failed to start HTTP server: %v", err)
+		log.Fatal("Failed to start HTTP server", "error", err.Error())
 	}
+
+	logger.DoNothing()
 }

@@ -16,7 +16,7 @@ type RabbitPublisher struct {
 
 func NewRabbitPublisher(ch *amqp.Channel, exchange string) *RabbitPublisher {
 	log := logger.GetLogger()
-	log.Debug("RabbitMQ: Initializing publisher | Exchange=%s", exchange)
+	log.Debug("Initializing RabbitMQ publisher", "exchange", exchange)
 	return &RabbitPublisher{
 		channel:  ch,
 		exchange: exchange,
@@ -25,15 +25,15 @@ func NewRabbitPublisher(ch *amqp.Channel, exchange string) *RabbitPublisher {
 }
 
 func (r *RabbitPublisher) Publish(ctx context.Context, topic string, payload interface{}) error {
-	r.log.Debug("RabbitMQ: Publishing event | Topic=%s | Exchange=%s", topic, r.exchange)
+	r.log.Debug("Publishing event", "topic", topic, "exchange", r.exchange)
 	
 	body, err := json.Marshal(payload)
 	if err != nil {
-		r.log.Error("RabbitMQ: Failed to marshal payload | Topic=%s | Error: %v", topic, err)
+		r.log.Error("Failed to marshal payload", "topic", topic, "error", err.Error())
 		return err
 	}
 
-	r.log.Debug("RabbitMQ: Serialized payload | Topic=%s | Size=%d bytes", topic, len(body))
+	r.log.Debug("Serialized payload", "topic", topic, "size", len(body))
 
 	err = r.channel.Publish(
 		r.exchange,
@@ -47,10 +47,10 @@ func (r *RabbitPublisher) Publish(ctx context.Context, topic string, payload int
 	)
 
 	if err != nil {
-		r.log.Error("RabbitMQ: Failed to publish event | Topic=%s | Error: %v", topic, err)
+		r.log.Error("Failed to publish event", "topic", topic, "error", err.Error())
 		return err
 	}
 
-	r.log.Info("✅ RabbitMQ: Event published successfully | Topic=%s | Exchange=%s", topic, r.exchange)
+	r.log.Info("Event published successfully", "topic", topic, "exchange", r.exchange)
 	return nil
 }

@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS order_status_history (
     order_id UUID NOT NULL REFERENCES Orders(id) ON DELETE CASCADE,
     status VARCHAR(50) NOT NULL,
     comment VARCHAR(512),
-    created_at TIMESTAMP NOT NULL DEFAULT NOW
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_order_status_history_order_id ON order_status_history(order_id);
