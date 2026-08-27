@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"net/http"
 	"order-service/internal/delivery"
 	"order-service/internal/infrastructure/rabbitmq"
 	"order-service/internal/logger"
@@ -9,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jmoiron/sqlx"
@@ -79,9 +82,31 @@ func startServer(handler *delivery.OrderHandler, log *logger.Logger) {
 	log.Info("HTTP routes registered")
 	log.Info("Listening on :8080")
 
-	if err := r.Run(":8080"); err != nil {
-		log.Fatal("Failed to start HTTP server", "error", err.Error())
+	srv := &http.Server{
+		Addr:    ":8080",
+		Handler: r,
 	}
 
-	logger.DoNothing()
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal("error while starting http server: %s", err)
+		}
+	}()
+	log.Info("Server started")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Info("Shutdown signal received, shutting down server...")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Fatal("Server forced to shutdown:", err)
+	}
+
+	log.Info("Server exiting")
+
 }
