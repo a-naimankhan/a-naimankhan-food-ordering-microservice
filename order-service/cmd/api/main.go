@@ -58,17 +58,46 @@ func main() {
 	log.Info("All components initialized successfully")
 	log.Info("Starting HTTP server on :8080")
 
-	go startServer(handler, log)
+	srv := startServer(handler, log)
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
 	log.Info("Shutdown signal received")
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	//Shutting down HTTP server
+	log.Info("Shutting down HTTP server...")
+	if err := srv.Shutdown(ctx); err != nil {
+		log.Error("Server forced to shutdown:", err)
+	} else {
+		log.Info("HTTP server stopped gracefully")
+	}
+
+	//shutting down RABBITMQ
+	log.Info("Closing RabbitMQ channel and connection...")
+	if err := ch.Close(); err != nil {
+		log.Error("Failed to close RabbitMQ channel: ", err)
+	}
+	if err := conn.Close(); err != nil {
+		log.Error("Failed to close RabbitMQ connection: ", err)
+	}
+	log.Info("RabbitMQ connection closed")
+
+	//shutting down Database
+	log.Info("Shutting down database connection...")
+	if err := db.Close(); err != nil {
+		log.Error("Failed to close database: ", err)
+	} else {
+		log.Info("Database connection closed")
+	}
+
 	log.Info("Server shutdown complete")
 }
 
-func startServer(handler *delivery.OrderHandler, log *logger.Logger) {
+func startServer(handler *delivery.OrderHandler, log *logger.Logger) *http.Server {
 	r := gin.Default()
 
 	log.Debug("Registering HTTP routes")
@@ -93,20 +122,6 @@ func startServer(handler *delivery.OrderHandler, log *logger.Logger) {
 		}
 	}()
 	log.Info("Server started")
-
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
-
-	log.Info("Shutdown signal received, shutting down server...")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Fatal("Server forced to shutdown:", err)
-	}
-
-	log.Info("Server exiting")
+	return srv
 
 }
