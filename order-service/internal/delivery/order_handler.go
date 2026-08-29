@@ -33,7 +33,7 @@ type OrderRequest struct {
 
 func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	h.log.Debug("POST /api/v1/orders received", "remote_addr", c.RemoteIP())
-	
+
 	var req OrderRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		h.log.Error("Invalid JSON request", "error", err.Error())
@@ -43,11 +43,11 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 
 	h.log.Debug("Request parsed", "customer_id", req.CustomerID, "amount", req.Amount, "status", req.Status)
 
-	if err := h.validate.Struct(req); err != nil {
-		h.log.Error("Validation failed", "error", err.Error())
-		ErrorResponse(c, http.StatusBadRequest, err.Error())
-		return
-	}
+	//if err := h.validate.Struct(req); err != nil {
+	//	h.log.Error("Validation failed", "error", err.Error())
+	//	ErrorResponse(c, http.StatusBadRequest, err.Error())
+	//	return
+	//}
 
 	cid, err := uuid.Parse(req.CustomerID)
 	if err != nil {
@@ -95,7 +95,7 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 		ErrorResponse(c, http.StatusBadRequest, "not valid format id")
 		return
 	}
-	
+
 	h.log.Debug("Fetching order from service", "id", parsedID)
 	order, err := h.service.GetOrder(c.Request.Context(), parsedID)
 	if err != nil {
@@ -103,7 +103,7 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 		ErrorResponse(c, http.StatusNotFound, "order not found")
 		return
 	}
-	
+
 	h.log.Info("Order retrieved successfully", "id", parsedID, "status_code", 200)
 	SuccessResponse(c, http.StatusOK, order)
 }
