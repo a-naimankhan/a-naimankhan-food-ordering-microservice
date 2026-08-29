@@ -34,18 +34,15 @@ func main() {
 	log.Debug("Connecting to PostgreSQL database", "host", "localhost", "port", 5432)
 	db, err := sqlx.Open("postgres", "postgres://user:password123@localhost:5432/orders_db?sslmode=disable")
 	log.Must(err, "Failed to connect to PostgreSQL")
-	defer db.Close()
 
 	log.Info("PostgreSQL connected successfully")
 	log.Debug("Connecting to RabbitMQ broker", "host", "localhost", "port", 5672)
 
 	conn, err := amqp.Dial("amqp://guest:guest@localhost:5672/")
 	log.Must(err, "Failed to connect to RabbitMQ")
-	defer conn.Close()
 
 	ch, err := conn.Channel()
 	log.Must(err, "Failed to open RabbitMQ channel")
-	defer ch.Close()
 
 	log.Info("RabbitMQ connected successfully")
 	log.Debug("Initializing repository, service, and handler")
