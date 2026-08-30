@@ -25,27 +25,28 @@ type Logger struct {
 }
 
 var (
-	instance *Logger
-	once     sync.Once
+	instance    *Logger
+	once        sync.Once
+	globalLevel = new(slog.LevelVar)
 )
 
 // Init инициализирует логгер
 func Init(mode LogMode) *Logger {
+
 	once.Do(func() {
 		// Определяем уровень логирования
-		var level slog.Level
 		switch mode {
 		case DEBUG:
-			level = slog.LevelDebug
+			globalLevel.Set(slog.LevelDebug)
 		case ERROR, PROD:
-			level = slog.LevelError
+			globalLevel.Set(slog.LevelError)
 		default:
-			level = slog.LevelInfo
+			globalLevel.Set(slog.LevelInfo)
 		}
 
 		// Создаем обработчик с структурированным выводом в stdout
 		opts := &slog.HandlerOptions{
-			Level: level,
+			Level:     globalLevel,
 			AddSource: true,
 		}
 
@@ -71,10 +72,20 @@ func GetLogger() *Logger {
 }
 
 // SetMode устанавливает режим логирования
-func (l *Logger) SetMode(mode LogMode) {
+func (l *Logger) SetMode(level LogMode) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	l.mode = mode
+
+	l.mode = level
+
+	switch level {
+	case DEBUG:
+		globalLevel.Set(slog.LevelDebug)
+	case ERROR, PROD:
+		globalLevel.Set(slog.LevelError)
+	default:
+		globalLevel.Set(slog.LevelInfo)
+	}
 }
 
 // GetMode возвращает текущий режим
@@ -88,11 +99,11 @@ func (l *Logger) GetMode() LogMode {
 func (l *Logger) Info(msg string, args ...interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.logger == nil {
 		return
 	}
-	
+
 	attrs := l.argsToAttrs(args)
 	l.logger.LogAttrs(context.Background(), slog.LevelInfo, msg, attrs...)
 }
@@ -101,7 +112,7 @@ func (l *Logger) Info(msg string, args ...interface{}) {
 func (l *Logger) Debug(msg string, args ...interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.logger == nil {
 		return
 	}
@@ -118,7 +129,7 @@ func (l *Logger) Debug(msg string, args ...interface{}) {
 func (l *Logger) Warn(msg string, args ...interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.logger == nil {
 		return
 	}
@@ -135,7 +146,7 @@ func (l *Logger) Warn(msg string, args ...interface{}) {
 func (l *Logger) Error(msg string, args ...interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.logger == nil {
 		return
 	}
@@ -148,17 +159,17 @@ func (l *Logger) Error(msg string, args ...interface{}) {
 func (l *Logger) Fatal(msg string, args ...interface{}) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	
+
 	if l.logger == nil {
 		panic(msg)
 	}
 
 	attrs := l.argsToAttrs(args)
 	l.logger.LogAttrs(context.Background(), slog.LevelError, msg, attrs...)
-	
+
 	// Записываем в файл при панике
 	l.writePanicLog(msg, args...)
-	
+
 	panic(msg)
 }
 
@@ -166,10 +177,10 @@ func (l *Logger) Fatal(msg string, args ...interface{}) {
 func (l *Logger) Must(err error, context string) {
 	if err != nil {
 		l.Error("Critical error", "context", context, "error", err.Error())
-		
+
 		// Записываем в файл при панике
 		l.writePanicLog(context, "error", err.Error())
-		
+
 		panic(fmt.Sprintf("%s: %v", context, err))
 	}
 }
@@ -178,10 +189,10 @@ func (l *Logger) Must(err error, context string) {
 func (l *Logger) MustNotNil(value interface{}, context string) {
 	if value == nil {
 		l.Error("Nil value check failed", "context", context)
-		
+
 		// Записываем в файл при панике
 		l.writePanicLog("Nil value", "context", context)
-		
+
 		panic(fmt.Sprintf("Value is nil: %s", context))
 	}
 }
@@ -197,9 +208,9 @@ func (l *Logger) Close() {
 // writePanicLog записывает информацию о панике в файл
 func (l *Logger) writePanicLog(context string, args ...interface{}) {
 	fileName := "prod_failed_logs.md"
-	
+
 	timestamp := time.Now().Format(time.RFC3339)
-	
+
 	// Конвертируем args в строку для причины
 	reason := ""
 	if len(args) > 0 {
