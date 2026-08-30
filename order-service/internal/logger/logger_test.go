@@ -138,7 +138,6 @@ func TestSetMode(t *testing.T) {
 			if got := lg.GetMode(); got != tt.want {
 				t.Fatalf("GetMode() = %s, want %s", got, tt.want)
 			}
-			if got :=
 		})
 	}
 }
