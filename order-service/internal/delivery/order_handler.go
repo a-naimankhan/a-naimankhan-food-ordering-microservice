@@ -108,6 +108,39 @@ func (h *OrderHandler) GetOrder(c *gin.Context) {
 	SuccessResponse(c, http.StatusOK, order)
 }
 
+func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
+	id := c.Param("id")
+	h.log.Debug("PATCH /api/v1/orders/:id/status received", "id", id, "remote_addr", c.RemoteIP())
+
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		h.log.Error("Invalid order ID format", "id", id, "error", err.Error())
+		ErrorResponse(c, http.StatusBadRequest, "not valid format id")
+		return
+	}
+
+	var req struct {
+		Status string `json:"status" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Error("Invalid JSON request for status update", "error", err.Error())
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = h.service.UpdateOrderStatus(c.Request.Context(), parsedID, req.Status)
+	if err != nil {
+		h.log.Error("Failed to update order status", "id", parsedID, "error", err.Error())
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.log.Info("Order status updated successfully", "id", parsedID, "status", req.Status)
+	SuccessResponse(c, http.StatusOK, gin.H{"status": req.Status})
+	return
+
+}
+
 func (h *OrderHandler) Ping(c *gin.Context) {
 	h.log.Debug("GET /api/v1/ping received", "remote_addr", c.RemoteIP())
 	c.JSON(http.StatusOK, gin.H{"message": "pong"})

@@ -68,7 +68,7 @@ func main() {
 	//Shutting down HTTP server
 	log.Info("Shutting down HTTP server...")
 	if err := srv.Shutdown(ctx); err != nil {
-		log.Error("Server forced to shutdown:", err, err.Error())
+		log.Error("Server forced to shutdown:", "error", err.Error())
 	} else {
 		log.Info("HTTP server stopped gracefully")
 	}
@@ -76,17 +76,17 @@ func main() {
 	//shutting down RABBITMQ
 	log.Info("Closing RabbitMQ channel and connection...")
 	if err := ch.Close(); err != nil {
-		log.Error("Failed to close RabbitMQ channel: ", err, err.Error())
+		log.Error("Failed to close RabbitMQ channel: ", "error", err.Error())
 	}
 	if err := conn.Close(); err != nil {
-		log.Error("Failed to close RabbitMQ connection: ", err, err.Error())
+		log.Error("Failed to close RabbitMQ connection: ", "error", err.Error())
 	}
 	log.Info("RabbitMQ connection closed")
 
 	//shutting down Database
 	log.Info("Shutting down database connection...")
 	if err := db.Close(); err != nil {
-		log.Error("Failed to close database: ", err, err.Error())
+		log.Error("Failed to close database: ", "error", err.Error())
 	} else {
 		log.Info("Database connection closed")
 	}
@@ -103,6 +103,7 @@ func startServer(handler *delivery.OrderHandler, log *logger.Logger) *http.Serve
 		api.GET("/ping", handler.Ping)
 		api.POST("/orders", handler.CreateOrder)
 		api.GET("/orders/:id", handler.GetOrder)
+		api.PATCH("/orders/:id/status", handler.UpdateOrderStatus)
 	}
 
 	log.Info("HTTP routes registered")
