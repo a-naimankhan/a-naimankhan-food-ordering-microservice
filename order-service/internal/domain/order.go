@@ -25,4 +25,5 @@ type OrderService interface {
 	CreateOrder(ctx context.Context, order *Order) (*Order, error)
 	GetOrder(ctx context.Context, id uuid.UUID) (*Order, error)
 	UpdateOrderStatus(ctx context.Context, id uuid.UUID, status string) error
+	//CancelOrder(ctx context.Context, id uuid.UUID, reason string) error
 }

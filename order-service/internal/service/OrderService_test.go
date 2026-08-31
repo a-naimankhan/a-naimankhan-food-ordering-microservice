@@ -201,7 +201,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 			wantOrder:  false,
 		},
 		{
-			name: "success - shipped status",
+			name: "success - delivered status",
 			repo: &fakeRepo{
 				CreateFn: func(ctx context.Context, order *domain.Order) error {
 					return nil
@@ -209,7 +209,7 @@ func TestOrderService_CreateOrder(t *testing.T) {
 			},
 			customerID: validCustomerID,
 			amount:     25.50,
-			status:     "shipped",
+			status:     "delivered",
 			wantErr:    false,
 			wantOrder:  true,
 		},
@@ -296,30 +296,81 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 		errMsg  string
 	}{
 		{
-			name: "success - update to pending",
+			name: "success - update from pending to accepted",
 			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "pending"}, nil
+				},
 				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
 					return nil
 				},
 			},
 			id:      id,
-			status:  "pending",
+			status:  "accepted",
 			wantErr: false,
 		},
 		{
-			name: "success - update to shipped",
+			name: "success - update from pending to cancelled",
 			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "pending"}, nil
+				},
 				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
 					return nil
 				},
 			},
 			id:      id,
-			status:  "shipped",
+			status:  "cancelled",
 			wantErr: false,
 		},
 		{
-			name: "success - update to delivered",
+			name: "success - update from accepted to cooking",
 			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "accepted"}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					return nil
+				},
+			},
+			id:      id,
+			status:  "cooking",
+			wantErr: false,
+		},
+		{
+			name: "success - update from accepted to cancelled",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "accepted"}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					return nil
+				},
+			},
+			id:      id,
+			status:  "cancelled",
+			wantErr: false,
+		},
+		{
+			name: "success - update from cooking to ready_for_delivery",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "cooking"}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					return nil
+				},
+			},
+			id:      id,
+			status:  "ready_for_delivery",
+			wantErr: false,
+		},
+		{
+			name: "success - update from ready_for_delivery to delivered",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "ready_for_delivery"}, nil
+				},
 				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
 					return nil
 				},
@@ -329,15 +380,27 @@ func TestOrderService_UpdateOrderStatus(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "success - update to cancelled",
+			name: "failed - update from ready_for_delivery to cancelled",
 			repo: &fakeRepo{
-				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
-					return nil
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "ready_for_delivery"}, nil
 				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error { return domain.ErrInvalidTransaction },
 			},
 			id:      id,
 			status:  "cancelled",
-			wantErr: false,
+			wantErr: true,
+		},
+		{
+			name: "fail - invalid transition from delivered to pending",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, orderID uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: orderID, Status: "delivered"}, nil
+				},
+			},
+			id:      id,
+			status:  "pending",
+			wantErr: true,
 		},
 		{
 			name:    "validation - empty status",
@@ -428,11 +491,11 @@ func TestOrderService_CreateOrder_PublishesEvent(t *testing.T) {
 	}
 
 	tests := []struct {
-		name             string
-		publisher        domain.EventPublisher
-		expectedTopic    string
-		wantPublished    bool
-		wantErr          bool
+		name          string
+		publisher     domain.EventPublisher
+		expectedTopic string
+		wantPublished bool
+		wantErr       bool
 	}{
 		{
 			name:          "publishes order.created event on success",
@@ -497,9 +560,9 @@ func TestOrderService_CreateOrder_PublisherNotCalledOnValidationError(t *testing
 	ctx := context.Background()
 
 	tests := []struct {
-		name       string
-		order      *domain.Order
-		errMsg     string
+		name   string
+		order  *domain.Order
+		errMsg string
 	}{
 		{
 			name:   "invalid customer id",
