@@ -200,7 +200,7 @@ func TestOrderHandler_GetOrder(t *testing.T) {
 						ID:         orderID,
 						CustomerID: customerID,
 						Amount:     42,
-						Status:     domain.StatusShipped,
+						Status:     domain.StatusDelivered,
 					}, nil
 				},
 			},
@@ -211,7 +211,7 @@ func TestOrderHandler_GetOrder(t *testing.T) {
 				assert.Equal(t, orderID, got.ID)
 				assert.Equal(t, customerID, got.CustomerID)
 				assert.Equal(t, 42.0, got.Amount)
-				assert.Equal(t, domain.StatusShipped, got.Status)
+				assert.Equal(t, domain.StatusDelivered, got.Status)
 			},
 		},
 		{
