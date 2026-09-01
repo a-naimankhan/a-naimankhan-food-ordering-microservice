@@ -104,6 +104,7 @@ func startServer(handler *delivery.OrderHandler, log *logger.Logger) *http.Serve
 		api.POST("/orders", handler.CreateOrder)
 		api.GET("/orders/:id", handler.GetOrder)
 		api.PATCH("/orders/:id/status", handler.UpdateOrderStatus)
+		api.PATCH("/orders/:id/cancel", handler.CancelOrder)
 	}
 
 	log.Info("HTTP routes registered")

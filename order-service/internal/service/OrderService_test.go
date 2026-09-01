@@ -628,3 +628,238 @@ func TestOrderService_CreateOrder_WithNilPublisher(t *testing.T) {
 	assert.NotEqual(t, uuid.Nil, result.ID)
 	assert.NotZero(t, result.CreatedAt)
 }
+
+func TestOrderService_CancelOrder(t *testing.T) {
+	ctx := context.Background()
+	orderID := uuid.New()
+
+	tests := []struct {
+		name              string
+		repo              *fakeRepo
+		publisher         *fakePublisher
+		reason            string
+		wantErr           error
+		wantUpdateCalled  bool
+		wantPublishCalled bool
+		wantTopic         string
+	}{
+		{
+			name:   "success - pending order can be cancelled",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					assert.Equal(t, orderID, id)
+					return &domain.Order{ID: id, Status: domain.StatusPending}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					assert.Equal(t, orderID, id)
+					assert.Equal(t, domain.StatusCancelled, status)
+					return nil
+				},
+			},
+			publisher:         &fakePublisher{},
+			wantUpdateCalled:  true,
+			wantPublishCalled: true,
+			wantTopic:         "order.cancelled",
+		},
+		{
+			name:   "success - accepted order can be cancelled",
+			reason: "restaurant cannot fulfill order",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusAccepted}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					assert.Equal(t, domain.StatusCancelled, status)
+					return nil
+				},
+			},
+			publisher:         &fakePublisher{},
+			wantUpdateCalled:  true,
+			wantPublishCalled: true,
+			wantTopic:         "order.cancelled",
+		},
+		{
+			name:   "success - nil publisher skips event publishing",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusPending}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					assert.Equal(t, domain.StatusCancelled, status)
+					return nil
+				},
+			},
+			wantUpdateCalled: true,
+		},
+		{
+			name:   "success - publisher error does not fail cancellation",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusPending}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					return nil
+				},
+			},
+			publisher: &fakePublisher{
+				PublishFn: func(ctx context.Context, topic string, payload interface{}) error {
+					return errors.New("rabbitmq unavailable")
+				},
+			},
+			wantUpdateCalled:  true,
+			wantPublishCalled: true,
+			wantTopic:         "order.cancelled",
+		},
+		{
+			name:   "repo get returns error",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return nil, errors.New("database read failed")
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   errors.New("database read failed"),
+		},
+		{
+			name:   "repo get returns nil order",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return nil, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrOrderNotFound,
+		},
+		{
+			name:   "repo get returns empty order",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: uuid.Nil, Status: domain.StatusPending}, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrOrderIsEmpty,
+		},
+		{
+			name:   "cooking order cannot be cancelled",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusCooking}, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrCannotCancelOrder,
+		},
+		{
+			name:   "ready for delivery order cannot be cancelled",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusReadyForDelivery}, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrCannotCancelOrder,
+		},
+		{
+			name:   "delivered order cannot be cancelled",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusDelivered}, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrCannotCancelOrder,
+		},
+		{
+			name:   "already cancelled order cannot be cancelled again",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusCancelled}, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrCannotCancelOrder,
+		},
+		{
+			name:   "unknown order status cannot be cancelled",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: "unknown"}, nil
+				},
+			},
+			publisher: &fakePublisher{},
+			wantErr:   domain.ErrCannotCancelOrder,
+		},
+		{
+			name:   "repo update returns error",
+			reason: "customer changed their mind",
+			repo: &fakeRepo{
+				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
+					return &domain.Order{ID: id, Status: domain.StatusPending}, nil
+				},
+				UpdateStatusFn: func(ctx context.Context, id uuid.UUID, status string) error {
+					return errors.New("database update failed")
+				},
+			},
+			publisher:        &fakePublisher{},
+			wantErr:          errors.New("database update failed"),
+			wantUpdateCalled: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			updateCalled := false
+			if tt.repo.UpdateStatusFn != nil {
+				originalUpdate := tt.repo.UpdateStatusFn
+				tt.repo.UpdateStatusFn = func(ctx context.Context, id uuid.UUID, status string) error {
+					updateCalled = true
+					return originalUpdate(ctx, id, status)
+				}
+			}
+
+			var publisher domain.EventPublisher
+			if tt.publisher != nil {
+				publisher = tt.publisher
+			}
+
+			svc := NewOrderService(tt.repo, publisher)
+
+			err := svc.CancelOrder(ctx, orderID, tt.reason)
+
+			if tt.wantErr != nil {
+				assert.Error(t, err)
+				assert.Equal(t, tt.wantErr.Error(), err.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+
+			assert.Equal(t, tt.wantUpdateCalled, updateCalled)
+
+			if tt.publisher != nil {
+				if tt.wantPublishCalled {
+					assert.Len(t, tt.publisher.calls, 1)
+					assert.Equal(t, tt.wantTopic, tt.publisher.calls[0].topic)
+
+					publishedOrder, ok := tt.publisher.calls[0].payload.(*domain.Order)
+					assert.True(t, ok)
+					assert.Equal(t, orderID, publishedOrder.ID)
+					assert.Equal(t, domain.StatusCancelled, publishedOrder.Status)
+				} else {
+					assert.Len(t, tt.publisher.calls, 0)
+				}
+			}
+		})
+	}
+}

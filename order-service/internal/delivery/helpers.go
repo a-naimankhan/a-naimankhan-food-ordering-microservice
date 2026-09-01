@@ -1,9 +1,13 @@
 package delivery
 
-import "github.com/gin-gonic/gin"
+import (
+	"net/http"
+
+	"github.com/gin-gonic/gin"
+)
 
 func ErrorResponse(c *gin.Context, code int, message string) {
-	c.JSON(code, gin.H{"message": message})
+	c.AbortWithStatusJSON(code, gin.H{"status": http.StatusText(code), "message": message})
 }
 
 func SuccessResponse(c *gin.Context, code int, data interface{}) {

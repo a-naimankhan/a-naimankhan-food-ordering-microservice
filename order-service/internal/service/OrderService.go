@@ -141,7 +141,46 @@ func (s *orderService) UpdateOrderStatus(ctx context.Context, id uuid.UUID, stat
 	return nil
 }
 
-//func (s *orderService) CancelOrder(ctx context.Context, id uuid.UUID, reason string) error {
-//	//TODO finish this
-//
-//}
+func (s *orderService) CancelOrder(ctx context.Context, id uuid.UUID, reason string) error {
+	s.log.Debug("Cancelling order", "id", id, "reason", reason)
+
+	order, err := s.orderRepo.GetByID(ctx, id)
+	if err != nil {
+		s.log.Error("Failed to get order for cancellation", "id", id, "error", err.Error())
+		return err
+	}
+
+	if order == nil {
+		s.log.Error("Order not found", "id", id)
+		return domain.ErrOrderNotFound
+	}
+
+	if order.ID == uuid.Nil {
+		s.log.Error("Order is empty", "id", id)
+		return domain.ErrOrderIsEmpty
+	}
+
+	if order.Status != domain.StatusAccepted && order.Status != domain.StatusPending {
+		s.log.Error("Order status is invalid", "id", id, "status", order.Status)
+		return domain.ErrCannotCancelOrder
+	}
+
+	err = s.orderRepo.UpdateStatus(ctx, id, domain.StatusCancelled)
+	if err != nil {
+		s.log.Error("Failed to cancel order", "id", id, "error", err.Error())
+		return err
+	}
+
+	order.Status = domain.StatusCancelled
+	s.log.Info("Order cancelled successfully", "id", id, "reason", reason)
+
+	if s.eventPublisher != nil {
+		s.log.Debug("Publishing order.cancelled event", "id", id)
+
+		if err := s.eventPublisher.Publish(ctx, "order.cancelled", order); err != nil {
+			s.log.Error("Failed to publish order.cancelled event", "id", id, "error", err.Error())
+		}
+	}
+
+	return nil
+}

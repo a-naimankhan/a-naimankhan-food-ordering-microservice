@@ -141,6 +141,50 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 
 }
 
+func (h *OrderHandler) CancelOrder(c *gin.Context) {
+	id := c.Param("id")
+	h.log.Debug("PATCH /api/v1/orders/:id/cancel received", "id", id, "remote_addr", c.RemoteIP())
+
+	parsedID, err := uuid.Parse(id)
+	if err != nil {
+		h.log.Error("Invalid order ID format", "id", id, "error", err.Error())
+		ErrorResponse(c, http.StatusBadRequest, "not valid format id")
+		return
+	}
+
+	var req struct {
+		Reason string `json:"reason" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&req); err != nil {
+		h.log.Error("Invalid JSON request", "error", err.Error())
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	err = h.service.CancelOrder(c.Request.Context(), parsedID, req.Reason)
+	if err != nil {
+		if errors.Is(err, domain.ErrOrderNotFound) {
+			h.log.Error("Order not found", "id", parsedID, "error", err.Error())
+			ErrorResponse(c, http.StatusNotFound, "order not found")
+			return
+		}
+
+		if errors.Is(err, domain.ErrCannotCancelOrder) {
+			h.log.Error("Order cannot be cancelled", "id", parsedID, "error", err.Error())
+			ErrorResponse(c, http.StatusConflict, err.Error())
+			return
+		}
+
+		h.log.Error("Internal error", "id", parsedID, "error", err.Error())
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.log.Info("Order cancelled successfully", "id", parsedID)
+	SuccessResponse(c, http.StatusOK, gin.H{"status": domain.StatusCancelled})
+}
+
 func (h *OrderHandler) Ping(c *gin.Context) {
 	h.log.Debug("GET /api/v1/ping received", "remote_addr", c.RemoteIP())
 	c.JSON(http.StatusOK, gin.H{"message": "pong"})

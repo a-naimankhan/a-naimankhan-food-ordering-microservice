@@ -22,6 +22,7 @@ type fakeService struct {
 	CreateOrderFn       func(ctx context.Context, order *domain.Order) (*domain.Order, error)
 	GetOrderFn          func(ctx context.Context, id uuid.UUID) (*domain.Order, error)
 	UpdateOrderStatusFn func(ctx context.Context, id uuid.UUID, status string) error
+	CancelOrderFn       func(ctx context.Context, id uuid.UUID, reason string) error
 }
 
 func (f *fakeService) CreateOrder(ctx context.Context, order *domain.Order) (*domain.Order, error) {
@@ -45,6 +46,13 @@ func (f *fakeService) UpdateOrderStatus(ctx context.Context, id uuid.UUID, statu
 	return f.UpdateOrderStatusFn(ctx, id, status)
 }
 
+func (f *fakeService) CancelOrder(ctx context.Context, id uuid.UUID, reason string) error {
+	if f.CancelOrderFn == nil {
+		return nil
+	}
+	return f.CancelOrderFn(ctx, id, reason)
+}
+
 func setupRouter(svc domain.OrderService) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 
@@ -54,6 +62,7 @@ func setupRouter(svc domain.OrderService) *gin.Engine {
 	r.POST("/orders", h.CreateOrder)
 	r.GET("/orders/:id", h.GetOrder)
 	r.PATCH("/orders/:id/status", h.UpdateOrderStatus)
+	r.PATCH("/orders/:id/cancel", h.CancelOrder)
 
 	return r
 }
@@ -362,6 +371,117 @@ func TestOrderHandler_UpdateOrderStatus(t *testing.T) {
 			router := setupRouter(tt.service)
 
 			w := performRequest(router, http.MethodPatch, "/orders/"+tt.idParam+"/status", tt.body)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+			if tt.assertResponse != nil {
+				tt.assertResponse(t, w.Body.Bytes())
+				return
+			}
+			assertErrorMessageContains(t, w.Body.Bytes(), tt.wantMessage)
+		})
+	}
+}
+
+func TestOrderHandler_CancelOrder(t *testing.T) {
+	orderID := uuid.New()
+
+	tests := []struct {
+		name           string
+		idParam        string
+		body           string
+		service        *fakeService
+		wantStatus     int
+		wantMessage    string
+		assertResponse func(t *testing.T, body []byte)
+	}{
+		{
+			name:    "success",
+			idParam: orderID.String(),
+			body: jsonBody(t, map[string]interface{}{
+				"reason": "customer changed their mind",
+			}),
+			service: &fakeService{
+				CancelOrderFn: func(ctx context.Context, id uuid.UUID, reason string) error {
+					assert.Equal(t, orderID, id)
+					assert.Equal(t, "customer changed their mind", reason)
+					return nil
+				},
+			},
+			wantStatus: http.StatusOK,
+			assertResponse: func(t *testing.T, body []byte) {
+				var got map[string]string
+				require.NoError(t, json.Unmarshal(body, &got))
+				assert.Equal(t, domain.StatusCancelled, got["status"])
+			},
+		},
+		{
+			name:        "invalid uuid",
+			idParam:     "not-a-uuid",
+			body:        jsonBody(t, map[string]interface{}{"reason": "wrong order"}),
+			service:     &fakeService{},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "not valid format id",
+		},
+		{
+			name:        "invalid json",
+			idParam:     orderID.String(),
+			body:        `{"reason":`,
+			service:     &fakeService{},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "unexpected EOF",
+		},
+		{
+			name:        "missing reason",
+			idParam:     orderID.String(),
+			body:        `{}`,
+			service:     &fakeService{},
+			wantStatus:  http.StatusBadRequest,
+			wantMessage: "Error:Field validation",
+		},
+		{
+			name:    "service returns not found",
+			idParam: orderID.String(),
+			body:    jsonBody(t, map[string]interface{}{"reason": "wrong order"}),
+			service: &fakeService{
+				CancelOrderFn: func(ctx context.Context, id uuid.UUID, reason string) error {
+					return domain.ErrOrderNotFound
+				},
+			},
+			wantStatus:  http.StatusNotFound,
+			wantMessage: "order not found",
+		},
+		{
+			name:    "service returns cannot cancel",
+			idParam: orderID.String(),
+			body:    jsonBody(t, map[string]interface{}{"reason": "too late"}),
+			service: &fakeService{
+				CancelOrderFn: func(ctx context.Context, id uuid.UUID, reason string) error {
+					return domain.ErrCannotCancelOrder
+				},
+			},
+			wantStatus:  http.StatusConflict,
+			wantMessage: domain.ErrCannotCancelOrder.Error(),
+		},
+		{
+			name:    "service returns unexpected error",
+			idParam: orderID.String(),
+			body:    jsonBody(t, map[string]interface{}{"reason": "payment failed"}),
+			service: &fakeService{
+				CancelOrderFn: func(ctx context.Context, id uuid.UUID, reason string) error {
+					return errors.New("database update failed")
+				},
+			},
+			wantStatus:  http.StatusInternalServerError,
+			wantMessage: "database update failed",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			router := setupRouter(tt.service)
+
+			w := performRequest(router, http.MethodPatch, "/orders/"+tt.idParam+"/cancel", tt.body)
 
 			assert.Equal(t, tt.wantStatus, w.Code)
 			if tt.assertResponse != nil {

@@ -9,4 +9,6 @@ var (
 	ErrStatusEmpty        = errors.New("status is empty")
 	ErrInvalidStatus      = errors.New("status is invalid")
 	ErrInvalidTransaction = errors.New("transaction is invalid")
+	ErrCannotCancelOrder  = errors.New("cannot cancel order")
+	ErrOrderIsEmpty       = errors.New("order is empty")
 )
