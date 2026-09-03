@@ -78,10 +78,11 @@ func (s *notificationService) HandleOrderCancelled(ctx context.Context, event *d
 		return domain.ErrInvalidEventPayload
 	}
 
-	//здесь нужно понимать что reason не может быть пустым пусть лучше он отправить одни из дефолтных ответов или то что напишет сам кастомер
 	if event.CancelledReason == nil || *event.CancelledReason == "" {
 		s.log.Error("Event cancelled_reason is empty", "order_id", event.OrderID)
-		return domain.ErrInvalidEventPayload
+		//или лучше сделать его как null guard и отдавать пустой ризон
+		defaultReason := "No reason provided"
+		event.CancelledReason = &defaultReason
 	}
 
 	notification := &domain.Notification{
@@ -90,6 +91,7 @@ func (s *notificationService) HandleOrderCancelled(ctx context.Context, event *d
 		CustomerID: event.CustomerID,
 		Type:       domain.EventOrderCancelled,
 		Message:    "Your order " + event.OrderID.String() + " has been cancelled.",
+		Reason:     event.CancelledReason,
 		CreatedAt:  time.Now(),
 	}
 

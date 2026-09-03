@@ -12,5 +12,6 @@ type Notification struct {
 	CustomerID uuid.UUID
 	Type       string
 	Message    string
+	Reason     *string
 	CreatedAt  time.Time
 }
