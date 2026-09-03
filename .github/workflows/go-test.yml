@@ -16,9 +16,7 @@ jobs:
         service: [order-service, notification-service]
     defaults:
       run:
-        working-directory: ./{{
-          matrix.service
-        }}
+        working-directory: ./${{ matrix.service }}
     steps:
       - uses: actions/checkout@v4
 
