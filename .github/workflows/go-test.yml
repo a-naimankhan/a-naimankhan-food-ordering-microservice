@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        services: [order-service, notification-service]
+        service: [order-service, notification-service]
     defaults:
       run:
         working-directory: ./{{
