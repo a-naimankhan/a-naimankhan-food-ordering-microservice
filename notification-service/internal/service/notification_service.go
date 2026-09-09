@@ -78,12 +78,16 @@ func (s *notificationService) HandleOrderCancelled(ctx context.Context, event *d
 		return domain.ErrInvalidEventPayload
 	}
 
-	if event.CancelledReason == nil || *event.CancelledReason == "" {
-		s.log.Error("Event cancelled_reason is empty", "order_id", event.OrderID)
-		//или лучше сделать его как null guard и отдавать пустой ризон
-		defaultReason := "No reason provided"
-		event.CancelledReason = &defaultReason
-	}
+	//reason := "No reason provided"
+	//if event.CancelledReason != nil && *event.CancelledReason != "" {
+	//	reason = *event.CancelledReason
+	//} TODO уберу это все нафиг
+	//if event.CancelledReason == nil || *event.CancelledReason == "" {
+	//	s.log.Error("Event cancelled_reason is empty", "order_id", event.OrderID)
+	//	//или лучше сделать его как null guard и отдавать дефолтный ризон
+	//	defaultReason := "No reason provided"
+	//	event.CancelledReason = &defaultReason
+	//}
 
 	notification := &domain.Notification{
 		ID:         uuid.New(),
