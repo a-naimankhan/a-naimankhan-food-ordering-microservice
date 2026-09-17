@@ -758,7 +758,7 @@ func TestOrderService_CancelOrder(t *testing.T) {
 			wantErr:   domain.ErrCannotCancelOrder,
 		},
 		{
-			name:   "ready for delivery order cannot be cancelled",
+			name:   "ready for probes order cannot be cancelled",
 			reason: "customer changed their mind",
 			repo: &fakeRepo{
 				GetByIDFn: func(ctx context.Context, id uuid.UUID) (*domain.Order, error) {

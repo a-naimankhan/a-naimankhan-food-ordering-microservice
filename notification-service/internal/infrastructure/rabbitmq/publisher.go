@@ -3,7 +3,10 @@ package rabbitmq
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -48,13 +51,28 @@ func NewPublisher(conn *amqp.Connection, exchange string) (*Publisher, error) {
 }
 
 func (p *Publisher) Close() error {
+	var errs []error
+
 	if p.ch != nil {
 		if err := p.ch.Close(); err != nil {
-			return err
+			if !strings.Contains(err.Error(), "channel/connection is not open") {
+				errs = append(errs, fmt.Errorf("close channel: %w", err))
+			}
 		}
+		p.ch = nil
 	}
+
 	if p.conn != nil {
-		return p.conn.Close()
+		if err := p.conn.Close(); err != nil {
+			if !strings.Contains(err.Error(), "connection is not open") {
+				errs = append(errs, fmt.Errorf("close connection: %w", err))
+			}
+		}
+		p.conn = nil
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
 	}
 	return nil
 }

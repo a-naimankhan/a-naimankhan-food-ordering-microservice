@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
-	"log"
 	"net/http"
 	"notification-service/internal/delivery"
-	"notification-service/internal/logger"
-	"notification-service/internal/infrastructure/rabbitmq"
 	"notification-service/internal/domain"
+	"notification-service/internal/infrastructure/rabbitmq"
+	"notification-service/internal/logger"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/gin-gonic/gin"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
@@ -46,7 +45,7 @@ func main() {
 	//INIT HTTP SERVER
 	handler := delivery.NewNotificationHandler()
 	srv := startServer(handler, ":8081", logger)
-	
+
 	//TODO GRACEFULL SHUTDOWN
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -85,10 +84,10 @@ func startServer(handler *delivery.NotificationHandler, port string, logger *log
 		Addr:    port,
 		Handler: r,
 	}
-
+	errChan := make(chan error, 1)
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatal("error while starting http server: %s", err)
+			errChan <- err
 		}
 	}()
 	logger.Info("Server started")
