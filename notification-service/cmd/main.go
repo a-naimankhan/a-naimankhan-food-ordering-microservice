@@ -3,94 +3,95 @@ package main
 import (
 	"context"
 	"net/http"
-	"notification-service/internal/delivery"
 	"notification-service/internal/domain"
 	"notification-service/internal/infrastructure/rabbitmq"
 	"notification-service/internal/logger"
+	"notification-service/internal/probes"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
-	"github.com/gin-gonic/gin"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
 	//TODO INIT CONFIGS
-
+	rabbitURL := getEnv("RABBITMQ_URL", "amqp://guest:guest@localhost:5672/")
+	healthAddr := getEnv("HEALTH_ADDR", ":8081")
 	//TODO INIT LOGGER
-	logger := logger.Init(logger.DEBUG)
-	defer logger.Close()
-	logger.Info("Logger initialized successfully")
-	logger.Info("Starting notification service...")
+	log := logger.Init(logger.DEBUG)
+	defer log.Close()
+	log.Info("Logger initialized successfully")
+	log.Info("Starting notification service...")
 
 	//TODO INIT SERVICE LAYER
 
 	// INIT RABBITMQ PUBLISHER
 	// connect to RabbitMQ and initialize a publisher, close it on shutdown via defer
-	logger.Debug("Connecting to RabbitMQ broker", "host", "localhost", "port", 5672)
-	amqpConn, aerr := amqp.Dial("******localhost:5672/")
-	logger.Must(aerr, "Failed to connect to RabbitMQ")
+	log.Debug("Connecting to RabbitMQ broker", "host", "localhost", "port", 5672)
+	amqpConn, aerr := amqp.Dial(rabbitURL)
+	log.Must(aerr, "Failed to connect to RabbitMQ")
 
 	publisher, perr := rabbitmq.NewPublisher(amqpConn, domain.ExchangeOrders)
-	logger.Must(perr, "Failed to initialize RabbitMQ publisher")
-	// ensure publisher closed on shutdown
-	defer func() {
-		if err := publisher.Close(); err != nil {
-			logger.Error("Failed to close publisher during defer", "error", err.Error())
-		}
-	}()
+	log.Must(perr, "Failed to initialize RabbitMQ publisher")
 
 	//INIT HTTP SERVER
-	handler := delivery.NewNotificationHandler()
-	srv := startServer(handler, ":8081", logger)
+	serverErrChan := make(chan error, 1)
+	srv := probes.NewHealthServer(healthAddr) //ну пока что так
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Error("Server closed while opening", "error", err.Error())
+			//здесь если че добавим что приложение падало но пока одного логера хватает ведь я к8 не скоро добавлю
+		}
+	}()
 
 	//TODO GRACEFULL SHUTDOWN
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
-	logger.Info("Notification service is running. Press Ctrl+C to exit.")
-	<-quit
+	log.Info("Notification service is running...")
 
+	select {
+	case sig := <-quit:
+		log.Info("Shutdown signal received", "signal", sig.String())
+	case err := <-serverErrChan:
+		log.Fatal("Probe server failed to start", "error", err.Error())
+	}
 	//TODO CLEANUP RESOURCES
 	//cleanup http
 
-	logger.Info("Shutdown signal received. Cleaning up resources...")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	logger.Info("Shutting down HTTP server...")
+	log.Info("Shutting down HTTP server...")
 
 	if err := srv.Shutdown(ctx); err != nil {
-		logger.Error("Server forced to shutdown:", "error", err.Error())
+		log.Error("Server forced to shutdown:", "error", err.Error())
 	} else {
-		logger.Info("HTTP server stopped gracefully")
+		log.Info("HTTP server stopped gracefully")
 	}
+
+	//RabbitMQ publisher closing
+	log.Info("Closing RabbitMQ publisher...")
+	if err := publisher.Close(); err != nil {
+		log.Error("Failed to close publisher", "error", err)
+	} else {
+		log.Info("Publisher closed successfully")
+	}
+
+	//RabbiqMQ connection closing
+	log.Info("Closing RabbitMQ connection...")
+	if err := amqpConn.Close(); err != nil {
+		log.Error("Failed to close connection", "error", err.Error())
+	} else {
+		log.Info("RabbitMQ connection closed succesfully")
+	}
+
 }
 
-func startServer(handler *delivery.NotificationHandler, port string, logger *logger.Logger) *http.Server {
-	r := gin.Default()
-	logger.Debug("STARTED HTTP SERVER")
-	api := r.Group("/api/v1/notification")
-	{
-		api.GET("ping", handler.Ping)
+func getEnv(key, fallback string) string {
+	if val, ok := os.LookupEnv(key); ok {
+		return val
 	}
-
-	logger.Info("HTTP routes registered")
-	logger.Info("Listening on :", "port", 8081)
-
-	srv := &http.Server{
-		Addr:    port,
-		Handler: r,
-	}
-	errChan := make(chan error, 1)
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			errChan <- err
-		}
-	}()
-	logger.Info("Server started")
-	return srv
-
+	return fallback
 }
