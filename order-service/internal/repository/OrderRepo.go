@@ -45,7 +45,7 @@ func (o *orderRepo) Create(ctx context.Context, order *domain.Order) error {
 func (o *orderRepo) GetByID(ctx context.Context, id uuid.UUID) (*domain.Order, error) {
 	o.log.Debug("Fetching order from database", "id", id)
 	
-	query := "SELECT * FROM ORDERS WHERE id = $1"
+	query := "SELECT id, customer_id, status, amount, created_at FROM ORDERS WHERE id = $1"
 	var order domain.Order
 	err := o.db.GetContext(ctx, &order, query, id)
 	

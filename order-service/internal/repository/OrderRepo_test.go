@@ -93,7 +93,7 @@ func TestOrderRepo_GetByID(t *testing.T) {
 			name: "Success",
 			id:   orderID,
 			mockSetup: func() {
-				mock.ExpectQuery("SELECT \\* FROM ORDERS").
+				mock.ExpectQuery("SELECT id, customer_id, status, amount, created_at FROM ORDERS WHERE id = \\$1").
 					WithArgs(orderID). // У тебя в SQL сейчас $1, а не $2, поправь запрос!
 					WillReturnRows(sqlmock.NewRows([]string{"id", "customer_id", "status", "amount", "created_at"}).
 						AddRow(orderID, customerID, "pending", 99.9, time.Now()))
@@ -105,7 +105,7 @@ func TestOrderRepo_GetByID(t *testing.T) {
 			name: "Not Found",
 			id:   uuid.New(),
 			mockSetup: func() {
-				mock.ExpectQuery("SELECT \\* FROM ORDERS").
+				mock.ExpectQuery("SELECT id, customer_id, status, amount, created_at FROM ORDERS WHERE id = \\$1").
 					WillReturnError(sql.ErrNoRows)
 			},
 			wantErr: true,
