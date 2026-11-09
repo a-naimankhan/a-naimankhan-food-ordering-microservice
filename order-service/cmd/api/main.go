@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"order-service/internal/delivery"
+	"order-service/internal/domain"
 	"order-service/internal/infrastructure/rabbitmq"
+	rediscache "order-service/internal/infrastructure/redis"
 	"order-service/internal/logger"
 	"order-service/internal/repository"
 	"order-service/internal/service"
@@ -17,7 +19,17 @@ import (
 	"github.com/jmoiron/sqlx"
 	_ "github.com/lib/pq"
 	amqp "github.com/rabbitmq/amqp091-go"
+	goredis "github.com/redis/go-redis/v9"
 )
+
+const orderCacheTTL = 5 * time.Minute
+
+func getEnv(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
+}
 
 func main() {
 	////TODO init configs
@@ -45,11 +57,29 @@ func main() {
 	log.Must(err, "Failed to open RabbitMQ channel")
 
 	log.Info("RabbitMQ connected successfully")
+
+	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	log.Debug("Connecting to Redis", "addr", redisAddr)
+	redisClient := goredis.NewClient(&goredis.Options{
+		Addr:     redisAddr,
+		Password: os.Getenv("REDIS_PASSWORD"),
+	})
+	pingCtx, pingCancel := context.WithTimeout(context.Background(), 3*time.Second)
+	if err := redisClient.Ping(pingCtx).Err(); err != nil {
+		// Cache is optional: the service keeps working against PostgreSQL and
+		// go-redis reconnects on its own once Redis becomes available.
+		log.Warn("Redis is unavailable, order cache will fall back to database", "addr", redisAddr, "error", err.Error())
+	} else {
+		log.Info("Redis connected successfully")
+	}
+	pingCancel()
+
 	log.Debug("Initializing repository, service, and handler")
 
 	publisher := rabbitmq.NewRabbitPublisher(ch, "orders_events")
 	repo := repository.NewOrderRepo(db)
-	svc := service.NewOrderService(repo, publisher)
+	var svc domain.OrderService = service.NewOrderService(repo, publisher)
+	svc = service.NewCachedOrderService(svc, rediscache.NewOrderCache(redisClient, orderCacheTTL))
 	handler := delivery.NewOrderHandler(svc)
 
 	log.Info("All components initialized successfully")
@@ -82,6 +112,13 @@ func main() {
 		log.Error("Failed to close RabbitMQ connection: ", "error", err.Error())
 	}
 	log.Info("RabbitMQ connection closed")
+
+	//shutting down Redis
+	if err := redisClient.Close(); err != nil {
+		log.Error("Failed to close Redis client: ", "error", err.Error())
+	} else {
+		log.Info("Redis connection closed")
+	}
 
 	//shutting down Database
 	log.Info("Shutting down database connection...")
